@@ -175,9 +175,11 @@ public class UserServiceImpl implements UserService {
         Optional<User> maybeUser = userRepository.findByStringId(userInfoResponse.getId());
         if (maybeUser.isPresent()) {
             log.info("userCheckIsOurUser OurUser");
+            User user = maybeUser.get();
+            user.setAccessToken(accessTokenResponse.getAccessToken());
+            userRepository.save(user);
             log.info("userCheckIsOurUser end");
-
-            return maybeUser.get();
+            return user;
         } else {
             User user = User.builder()
                     .id(userInfoResponse.getId())
@@ -199,7 +201,7 @@ public class UserServiceImpl implements UserService {
             return user;
         }
     }
-    public void googleUserDelete (String userToken) {
+    public void googleUserDelete (String userToken) throws NullPointerException{
         User user = findUserByAccessTokenInDatabase(redisService.getAccessToken(userToken));
         String responseAccessToken = expiredGoogleAccessTokenRequester(user.getAccessToken());
 
@@ -212,10 +214,24 @@ public class UserServiceImpl implements UserService {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
         HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(body, headers);
+        try {
+            ResponseEntity<JsonNode> jsonNodeResponseEntity = restTemplate.postForEntity(googleRevokeUrl, requestEntity, JsonNode.class);
+            log.info("jsonNodeResponseEntity: " + jsonNodeResponseEntity);
+            if (jsonNodeResponseEntity.getStatusCode() == HttpStatus.OK){
+                redisService.deleteKeyAndValueWithUserToken(userToken);
+                UserProfile userProfile = userProfileRepository.findByUser(user).get();
+                user.setActive(Active.NO);
+                resignedUserRepository.save(user);
+                resignedUserProfileRepository.save(userProfile);
 
-        ResponseEntity<JsonNode> jsonNodeResponseEntity = restTemplate.postForEntity(googleRevokeUrl, requestEntity, JsonNode.class);
-        log.info("jsonNodeResponseEntity: " + jsonNodeResponseEntity);
-        // success가 리턴 되면 레디스 삭제, db 삭제
+                userRepository.delete(user);
+                userProfileRepository.delete(userProfile);
+            } else {
+                log.error("Can't Delete User");
+            }
+        }catch (Exception e){
+            log.error("Can't Delete User", e);
+        }
     }
 
     /*
@@ -368,8 +384,11 @@ public class UserServiceImpl implements UserService {
         Optional<User> maybeUser = userRepository.findByStringId(userInfoResponse.getId());
         if (maybeUser.isPresent()) {
             log.info("userCheckIsOurUser OurUser");
+            User user = maybeUser.get();
+            user.setAccessToken(accessTokenResponse.getAccessToken());
+            userRepository.save(user);
             log.info("userCheckIsOurUser end");
-            return maybeUser.get();
+            return user;
         } else {
             User user = User.builder()
                     .id(userInfoResponse.getId())
