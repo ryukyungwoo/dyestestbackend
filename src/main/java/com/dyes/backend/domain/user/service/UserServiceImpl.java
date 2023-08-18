@@ -5,6 +5,8 @@ import com.dyes.backend.domain.user.entity.Active;
 import com.dyes.backend.domain.user.entity.Address;
 import com.dyes.backend.domain.user.entity.User;
 import com.dyes.backend.domain.user.entity.UserProfile;
+import com.dyes.backend.domain.user.repository.WithdrawalUserProfileRepository;
+import com.dyes.backend.domain.user.repository.WithdrawalUserRepository;
 import com.dyes.backend.domain.user.repository.UserProfileRepository;
 import com.dyes.backend.domain.user.repository.UserRepository;
 import com.dyes.backend.domain.user.service.response.*;
@@ -38,6 +40,8 @@ public class UserServiceImpl implements UserService {
     final private KakaoOauthSecretsProvider kakaoOauthSecretsProvider;
     final private UserRepository userRepository;
     final private UserProfileRepository userProfileRepository;
+    final private WithdrawalUserRepository withdrawalUserRepository;
+    final private WithdrawalUserProfileRepository withdrawalUserProfileRepository;
     final private RedisService redisService;
     final private RestTemplate restTemplate;
     final private ObjectMapper objectMapper;
@@ -104,10 +108,9 @@ public class UserServiceImpl implements UserService {
 
         HttpHeaders headers = new HttpHeaders();
 
-
         try {
             headers.add("Authorization","Bearer "+ AccessToken);
-            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity(headers);
+            HttpEntity<String> request = new HttpEntity<>(headers);
             log.info("request: " + request);
 
             ResponseEntity<GoogleOauthUserInfoResponse> response = restTemplate.exchange(
@@ -123,7 +126,7 @@ public class UserServiceImpl implements UserService {
             String responseAccessToken = expiredGoogleAccessTokenRequester(AccessToken);
 
             headers.add("Authorization","Bearer "+ responseAccessToken);
-            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity(headers);
+            HttpEntity<String> request = new HttpEntity<>(headers);
             log.info("request: " + request);
 
             ResponseEntity<GoogleOauthUserInfoResponse> response = restTemplate.exchange(
@@ -169,17 +172,16 @@ public class UserServiceImpl implements UserService {
         log.info("expiredGoogleAccessTokenRequester end");
         return null;
     }
-    
+    // 구글 유저 찾기 후 없으면 저장
+
     public User googleUserSave (GoogleOauthAccessTokenResponse accessTokenResponse, GoogleOauthUserInfoResponse userInfoResponse) {
         log.info("userCheckIsOurUser start");
         Optional<User> maybeUser = userRepository.findByStringId(userInfoResponse.getId());
         if (maybeUser.isPresent()) {
             log.info("userCheckIsOurUser OurUser");
-            User user = maybeUser.get();
-            user.setAccessToken(accessTokenResponse.getAccessToken());
-            userRepository.save(user);
             log.info("userCheckIsOurUser end");
-            return user;
+
+            return maybeUser.get();
         } else {
             User user = User.builder()
                     .id(userInfoResponse.getId())
@@ -201,38 +203,46 @@ public class UserServiceImpl implements UserService {
             return user;
         }
     }
-    public void googleUserDelete (String userToken) throws NullPointerException{
+
+    // 구글 회원 탈퇴
+    public Boolean googleUserDelete (String userToken) throws NullPointerException{
         User user = findUserByAccessTokenInDatabase(redisService.getAccessToken(userToken));
         String responseAccessToken = expiredGoogleAccessTokenRequester(user.getAccessToken());
 
         final String googleRevokeUrl = googleOauthSecretsProvider.getGOOGLE_REVOKE_URL();
-        final String googleClientId = googleOauthSecretsProvider.getGOOGLE_AUTH_CLIENT_ID();
 
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
         body.add("token", responseAccessToken);
-        body.add("client_id", googleClientId);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
         HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(body, headers);
         try {
             ResponseEntity<JsonNode> jsonNodeResponseEntity = restTemplate.postForEntity(googleRevokeUrl, requestEntity, JsonNode.class);
-            log.info("jsonNodeResponseEntity: " + jsonNodeResponseEntity);
-            if (jsonNodeResponseEntity.getStatusCode() == HttpStatus.OK){
-                redisService.deleteKeyAndValueWithUserToken(userToken);
+            JsonNode responseBody = jsonNodeResponseEntity.getBody();
+            log.info("jsonNodeResponseEntity: " + responseBody);
+            if (responseBody.has("error")) {
+                String error = responseBody.get("error").asText();
+                String errorDescription = responseBody.get("error_description").asText();
+
+                log.error("Error: " + error + ", Error Description: " + errorDescription);
+                return false;
+            } else {
                 UserProfile userProfile = userProfileRepository.findByUser(user).get();
                 user.setActive(Active.NO);
-                resignedUserRepository.save(user);
-                resignedUserProfileRepository.save(userProfile);
+                withdrawalUserRepository.save(user);
+                withdrawalUserProfileRepository.save(userProfile);
 
-                userRepository.delete(user);
                 userProfileRepository.delete(userProfile);
-            } else {
-                log.error("Can't Delete User");
+                userRepository.delete(user);
+                redisService.deleteKeyAndValueWithUserToken(userToken);
+                return true;
             }
         }catch (Exception e){
             log.error("Can't Delete User", e);
+            return false;
         }
     }
+
 
     /*
     <------------------------------------------------------------------------------------------------------------------>
@@ -304,7 +314,7 @@ public class UserServiceImpl implements UserService {
         try {
             headers.add("Authorization","Bearer "+ AccessToken);
 
-            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity(headers);
+            HttpEntity<String> request = new HttpEntity(headers);
             log.info("request: " + request);
 
             ResponseEntity<JsonNode> response = restTemplate.exchange(
@@ -325,7 +335,7 @@ public class UserServiceImpl implements UserService {
             String responseAccessToken = expiredNaverAccessTokenRequester(AccessToken);
             headers.add("Authorization","Bearer "+ responseAccessToken);
 
-            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity(headers);
+            HttpEntity<String> request = new HttpEntity(headers);
             log.info("request: " + request);
 
             ResponseEntity<JsonNode> response = restTemplate.exchange(
@@ -378,17 +388,14 @@ public class UserServiceImpl implements UserService {
         log.info("expiredNaverAccessTokenRequester end");
         return null;
     }
-
+    // 네이버 유저 찾기 후 없으면 저장
     public User naverUserSave (NaverOauthAccessTokenResponse accessTokenResponse, NaverOauthUserInfoResponse userInfoResponse) {
         log.info("userCheckIsOurUser start");
         Optional<User> maybeUser = userRepository.findByStringId(userInfoResponse.getId());
         if (maybeUser.isPresent()) {
             log.info("userCheckIsOurUser OurUser");
-            User user = maybeUser.get();
-            user.setAccessToken(accessTokenResponse.getAccessToken());
-            userRepository.save(user);
             log.info("userCheckIsOurUser end");
-            return user;
+            return maybeUser.get();
         } else {
             User user = User.builder()
                     .id(userInfoResponse.getId())
@@ -409,6 +416,51 @@ public class UserServiceImpl implements UserService {
             log.info("userCheckIsOurUser NotOurUser");
             log.info("userCheckIsOurUser end");
             return user;
+        }
+    }
+    public Boolean naverUserDelete (String userToken) throws NullPointerException{
+        User user = findUserByAccessTokenInDatabase(redisService.getAccessToken(userToken));
+        log.info("user.getAccessToken(): " + user.getAccessToken());
+        String responseAccessToken = expiredNaverAccessTokenRequester(user.getAccessToken());
+        log.info("responseAccessToken: " + responseAccessToken);
+
+        final String naverRevokeUrl = naverOauthSecretsProvider.getNAVER_REVOKE_URL();
+        final String naverClientId = naverOauthSecretsProvider.getNAVER_AUTH_CLIENT_ID();
+        final String naverSecrets = naverOauthSecretsProvider.getNAVER_AUTH_SECRETS();
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("access_token", responseAccessToken);
+        body.add("client_id", naverClientId);
+        body.add("client_secret", naverSecrets);
+        body.add("grant_type", "delete");
+        body.add("service_provider", "NAVER");
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(body, headers);
+        try {
+            ResponseEntity<JsonNode> jsonNodeResponseEntity = restTemplate.postForEntity(naverRevokeUrl, requestEntity, JsonNode.class);
+            JsonNode responseBody = jsonNodeResponseEntity.getBody();
+            log.info("jsonNodeResponseEntity: " + responseBody);
+            if (responseBody.has("error")) {
+                String error = responseBody.get("error").asText();
+                String errorDescription = responseBody.get("error_description").asText();
+
+                log.error("Error: " + error + ", Error Description: " + errorDescription);
+                return false;
+            } else {
+                UserProfile userProfile = userProfileRepository.findByUser(user).get();
+                user.setActive(Active.NO);
+                withdrawalUserRepository.save(user);
+                withdrawalUserProfileRepository.save(userProfile);
+
+                userProfileRepository.delete(userProfile);
+                userRepository.delete(user);
+                redisService.deleteKeyAndValueWithUserToken(userToken);
+                return true;
+            }
+        }catch (Exception e){
+            log.error("Can't Delete User", e);
+            return false;
         }
     }
 
@@ -694,21 +746,30 @@ public class UserServiceImpl implements UserService {
     // userToken으로 사용자 로그아웃
     public boolean UserLogOut (String userToken) {
         log.info("UserLogOut start");
-        Boolean isLoggedOut;
+            log.info("UserLogOut end");
+            try {
+                logOutWithDeleteKeyAndValueInRedis(userToken);
+                return true;
+            } catch (Exception e) {
+                log.error("Can't logOut {}", e.getMessage(), e);
+                return false;
+            }
+    }
+
+    public boolean userWithdraw(String userToken) {
         String platform = divideUserByPlatform(userToken);
-        if (platform.equals("google")) {
-            isLoggedOut = logOutWithDeleteKeyAndValueInRedis(userToken);
-            log.info("UserLogOut end");
-            return isLoggedOut;
-        } else if (platform.equals("naver")) {
-            isLoggedOut = logOutWithDeleteKeyAndValueInRedis(userToken);
-            log.info("UserLogOut end");
-            return isLoggedOut;
+        if (platform.contains("google")){
+
+            log.info("divideUserByPlatform end");
+            return googleUserDelete(userToken);
+        } else if (platform.contains("naver")) {
+
+            log.info("divideUserByPlatform end");
+            return naverUserDelete(userToken);
         } else {
-            isLoggedOut = logOutWithDeleteKeyAndValueInRedis(userToken);
-            // 카카오 로그아웃 추가 작업하시면 됩니다
-            log.info("UserLogOut end");
-            return isLoggedOut;
+            // 카카오 탈퇴 함수
+            log.info("divideUserByPlatform end");
+            return false;
         }
     }
 

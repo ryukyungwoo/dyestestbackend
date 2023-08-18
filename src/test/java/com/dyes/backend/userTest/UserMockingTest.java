@@ -6,6 +6,8 @@ import com.dyes.backend.domain.user.entity.User;
 import com.dyes.backend.domain.user.entity.UserProfile;
 import com.dyes.backend.domain.user.repository.UserProfileRepository;
 import com.dyes.backend.domain.user.repository.UserRepository;
+import com.dyes.backend.domain.user.repository.WithdrawalUserProfileRepository;
+import com.dyes.backend.domain.user.repository.WithdrawalUserRepository;
 import com.dyes.backend.domain.user.service.UserServiceImpl;
 import com.dyes.backend.domain.user.service.response.*;
 import com.dyes.backend.utility.provider.GoogleOauthSecretsProvider;
@@ -52,6 +54,10 @@ public class UserMockingTest {
     @Mock
     private UserProfileRepository mockUserProfileRepository;
     @Mock
+    private WithdrawalUserRepository mockWithdrawalUserRepository;
+    @Mock
+    private WithdrawalUserProfileRepository mockWithdrawalUserProfileRepository;
+    @Mock
     private ObjectMapper mockObjectMapper;
     @InjectMocks
     private UserServiceImpl mockService;
@@ -66,10 +72,11 @@ public class UserMockingTest {
                 mockKakaoOauthSecretsProvider,
                 mockUserRepository,
                 mockUserProfileRepository,
+                mockWithdrawalUserRepository,
+                mockWithdrawalUserProfileRepository,
                 mockRedisService,
                 mockRestTemplate,
                 mockObjectMapper
-
         );
     }
 

@@ -24,8 +24,9 @@ public class RedisServiceImpl implements RedisService{
     @Override
     public String getAccessToken(String userToken) {
         ValueOperations<String, String> value = redisTemplateObject.opsForValue();
+        log.info("userToken: " + userToken);
         String accessToken = value.get(userToken);
-
+        log.info("accessToken: " + accessToken);
         if(accessToken == null) {
             return null;
         }

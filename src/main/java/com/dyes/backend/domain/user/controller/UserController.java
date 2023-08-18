@@ -71,6 +71,12 @@ public class UserController {
     // 사용자 로그 아웃
     @GetMapping("/logOut")
     public Boolean userLogOut(@RequestParam("userToken") String userToken) {
+
         return userService.UserLogOut(userToken);
+    }
+    @DeleteMapping("/withdrawal")
+    public Boolean userWithdraw (@RequestParam("userToken") String userToken) {
+
+        return userService.userWithdraw(userToken);
     }
 }
