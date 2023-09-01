@@ -59,7 +59,7 @@ public class CartMockingTest {
         final Long optionId = 1L;
         final int optionCount = 1;
         ContainProductOptionRequest request = new ContainProductOptionRequest(optionId, optionCount);
-        ContainProductRequestForm requestForm = new ContainProductRequestForm(userToken, List.of(request));
+        ContainProductRequestForm requestForm = new ContainProductRequestForm(userToken, request);
 
         User user = new User("1", "엑세스토큰", "리프래시 토큰", Active.YES, UserType.GOOGLE);
         when(mockAuthenticationService.findUserByUserToken(userToken)).thenReturn(user);
@@ -73,10 +73,30 @@ public class CartMockingTest {
         ProductOption productOption = new ProductOption(1L, "옵션이름", 2000L, 10, new Amount(), new Product(), SaleStatus.AVAILABLE);
 
         when(mockProductOptionRepository.findById(request.getProductOptionId())).thenReturn(Optional.of(productOption));
-        when(mockContainProductOptionRepository.findAllByCart(cart)).thenReturn(Optional.empty());
+        when(mockContainProductOptionRepository.findAllByCart(cart)).thenReturn(anyList());
 
         mockCartService.containProductIntoCart(requestForm);
         verify(mockCartRepository, times(1)).save(any());
         verify(mockContainProductOptionRepository, times(1)).save(any());
     }
+    @Test
+    @DisplayName("cart mocking test: product count modify in cart")
+    public void 사용자가_장바구니에_담긴_상품의_수량을_조절합니다 () {
+        final String userToken = "google유저";
+        final Long optionId = 1L;
+        final int optionCount = 1;
+
+        ContainProductOptionModifyRequest request = new ContainProductOptionModifyRequest(optionId, optionCount);
+        ContainProductOptionModifyRequestForm requestForm = new ContainProductOptionModifyRequestForm(userToken, request);
+
+        User user = new User("1", "엑세스토큰", "리프래시 토큰", Active.YES, UserType.GOOGLE);
+        when(mockAuthenticationService.findUserByUserToken(userToken)).thenReturn(user);
+
+        Cart cart = new Cart(1L, user);
+        when(mockCartRepository.findByUser(user)).thenReturn(Optional.of(cart));
+
+        ProductOption productOption = new ProductOption(1L, "옵션이름", 2000L, 10, new Amount(), new Product(), SaleStatus.AVAILABLE);
+
+    }
+
 }

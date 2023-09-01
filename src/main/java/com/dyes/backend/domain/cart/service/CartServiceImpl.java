@@ -6,6 +6,7 @@ import com.dyes.backend.domain.cart.entity.Cart;
 import com.dyes.backend.domain.cart.entity.ContainProductOption;
 import com.dyes.backend.domain.cart.repository.CartRepository;
 import com.dyes.backend.domain.cart.repository.ContainProductOptionRepository;
+import com.dyes.backend.domain.cart.service.request.CartCheckFromUserTokenRequest;
 import com.dyes.backend.domain.cart.service.request.ContainProductOptionRequest;
 import com.dyes.backend.domain.product.entity.ProductOption;
 import com.dyes.backend.domain.product.repository.ProductOptionRepository;
@@ -15,7 +16,6 @@ import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 
@@ -31,60 +31,100 @@ public class CartServiceImpl implements CartService{
     public void containProductIntoCart(ContainProductRequestForm requestForm) throws NullPointerException {
         log.info("containProductIntoCart start");
         // 유저가 장바구니가 있는지 확인
-        User user = authenticationService.findUserByUserToken(requestForm.getUserToken());
+        log.info("ContainProductRequestForm: " + requestForm);
+
+        CartCheckFromUserTokenRequest tokenRequest = new CartCheckFromUserTokenRequest(requestForm.getUserToken());
+        Cart cart = cartCheckFromUserToken(tokenRequest.getUserToken());
+
+        // 옵션 DTO에서 받아온 옵션 아이디와 옵션 갯수 넣기
+        ContainProductOptionRequest request = new ContainProductOptionRequest(requestForm.getRequest().getProductOptionId(), requestForm.getRequest().getOptionCount());
+
+        log.info("ContainProductOptionRequest: " + request);
+        // 받아온 옵션이 DB에 있는 옵션인지 확인
+        ProductOption productOption = isReallyExistProductOption(request.getProductOptionId());
+
+        // 받아온 옵션이 카트에 담긴 옵션인지 확인
+        ContainProductOption checkProductOptionInCart = checkProductOptionInCart(cart, request);
+
+        // 카트에 담긴 옵션이 없다면 새로 옵션을 저장하기
+        if (checkProductOptionInCart == null) {
+            log.info("savedOptionList isEmpty");
+            ContainProductOption containProductOption = ContainProductOption.builder()
+                    .productOption(productOption)
+                    .cart(cart)
+                    .optionCount(request.getOptionCount())
+                    .build();
+            containProductOptionRepository.save(containProductOption);
+            log.info("containProductIntoCart end");
+        }
+    }
+
+    // 유저 토큰으로 카트가 있나 없나 확인하기
+    public Cart cartCheckFromUserToken(String userToken) {
+        User user = authenticationService.findUserByUserToken(userToken);
+        log.info("user: " + user);
 
         Optional<Cart> maybeCart = cartRepository.findByUser(user);
-
-        final Cart cart;
 
         if (maybeCart.isEmpty()) {
             // 없으면 생성
             log.info("maybeCart isEmpty");
-            cart = new Cart();
+            Cart cart = new Cart();
             cart.setUser(user);
             cartRepository.save(cart);
             log.info("save new cart");
+            return cart;
         } else {
             // 있으면 가져오기
-            cart = maybeCart.get();
+            Cart cart = maybeCart.get();
             log.info("cart: " + cart);
+            return cart;
         }
-        // 옵션 리스트에 옵션 아이디와 옵션 갯수 넣기
-        for (ContainProductOptionRequest request : requestForm.getRequestList()) {
-            log.info("ContainProductOptionRequest: " + request);
-            Optional<ProductOption> maybeOption = productOptionRepository.findById(request.getProductOptionId());
-            if (maybeOption.isEmpty()) {
-                log.info("this option doesn't exist");
-                log.info("containProductIntoCart end");
-                return;
-            }
-            ProductOption productOption = maybeOption.get();
-            log.info("ProductOption: " + productOption);
-            Optional<List<ContainProductOption>> savedOptionList = containProductOptionRepository.findAllByCart(cart);
-            if (savedOptionList.isEmpty()) {
-                log.info("savedOptionList isEmpty");
-                ContainProductOption containProductOption = ContainProductOption.builder()
-                        .productOption(productOption)
-                        .cart(cart)
-                        .optionCount(request.getOptionCount())
-                        .build();
-                containProductOptionRepository.save(containProductOption);
-                log.info("containProductIntoCart end");
-                return;
-            }
-            Optional<ContainProductOption> result = savedOptionList.get().stream()
-                    .filter(option -> option.getId().equals(request.getProductOptionId()))
-                    .findFirst();
-            // 장바구니에 동일한 옵션이 있어서 수량만 변경할 때
-            if (result.isPresent()) {
-                log.info("result: " + result);
-                ContainProductOption containProductOption = result.get();
-                if (containProductOption.getCart() == cart){
-                    containProductOption.setOptionCount(request.getOptionCount());
-                    containProductOptionRepository.save(containProductOption);
-                    log.info("containProductIntoCart end");
-                }
-            }
+    }
+    // 옵션이 DB에 있는 진짜 옵션인지 파악하기
+    public ProductOption isReallyExistProductOption(Long productOptionId) {
+        log.info("isReallyExistProductOption start");
+
+        Optional<ProductOption> maybeOption = productOptionRepository.findByIdWithProductAndFarm(productOptionId);
+
+        if (maybeOption.isEmpty()) {
+            log.info("this option doesn't exist");
+            log.info("isReallyExistProductOption end");
+            return null;
         }
+        // 있는 옵션이라면
+        ProductOption productOption = maybeOption.get();
+        log.info("ProductOption: " + productOption);
+        log.info("isReallyExistProductOption end");
+        return productOption;
+    }
+//    public void savedContainProductOptionChangeCount(List<ContainProductOption> savedOptionList, ContainProductOptionRequest request) {
+//        // 카트에 저장된 옵션 중에 받아온 옵션 아이디와 동일한 옵션이 있는지 확인하기
+//        Optional<ContainProductOption> result = savedOptionList.stream()
+//                .filter(option -> option.getId().equals(request.getProductOptionId()))
+//                .findFirst();
+//
+//        // 동일한 옵션이 있다면 수량만 변경하기
+//        if (result.isPresent()) {
+//            log.info("result: " + result);
+//            ContainProductOption containProductOption = result.get();
+//            containProductOption.setOptionCount(request.getOptionCount());
+//            containProductOptionRepository.save(containProductOption);
+//            log.info("containProductIntoCart end");
+//        }
+//    }
+    // 카트에서 동일한 아이디가 있는지 확인하기
+    public ContainProductOption checkProductOptionInCart(Cart cart, ContainProductOptionRequest request) {
+        // 카트에 담긴 옵션들 다 불러오기
+        List<ContainProductOption> savedOptionList = containProductOptionRepository.findAllByCart(cart);
+        // 카트에 담긴 옵션 중에서 받아온 옵션과 동일한 옵션이 있는지 파악하기
+        Optional<ContainProductOption> result = savedOptionList.stream()
+                                                                .filter(option -> option.getId().equals(request.getProductOptionId()))
+                                                                .findFirst();
+
+        if (result.isPresent()) {
+            return result.get();
+        }
+        return null;
     }
 }
