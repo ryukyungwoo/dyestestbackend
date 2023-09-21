@@ -1,12 +1,18 @@
 package com.dyes.backend.domain.user.controller;
 
+import com.dyes.backend.domain.user.controller.form.UserAddressModifyRequestForm;
+import com.dyes.backend.domain.user.controller.form.UserAddressUpdateRequestForm;
 import com.dyes.backend.domain.user.controller.form.UserProfileModifyRequestForm;
 import com.dyes.backend.domain.user.service.UserService;
-import com.dyes.backend.domain.user.service.response.UserProfileResponseForm;
+import com.dyes.backend.domain.user.service.response.form.UserAddressBookResponseForm;
+import com.dyes.backend.domain.user.service.response.form.UserInfoResponseForm;
+import com.dyes.backend.domain.user.service.response.form.UserProfileResponseForm;
 import lombok.RequiredArgsConstructor;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @Slf4j
 @ToString
@@ -56,5 +62,31 @@ public class UserController {
     public Boolean userWithdrawal(@RequestParam("userToken") String userToken) {
 
         return userService.userWithdrawal(userToken);
+    }
+
+    // 사용자 배송지 정보 업데이트
+    @PutMapping("/update-address")
+    public Boolean updateAddress(@RequestBody UserAddressModifyRequestForm requestForm) {
+        log.info("배송지 업데이트");
+        return userService.updateAddress(requestForm);
+    }
+
+    // 사용자 주소록 조회(배송지 정보)
+    @GetMapping("/address-book")
+    public List<UserAddressBookResponseForm> getAddressBook(@RequestParam("userToken") String userToken) {
+        return userService.getAddressBook(userToken);
+    }
+
+    // 사용자 주소록 추가(배송지 정보)
+    @PostMapping("/address-book/update")
+    public Boolean updateAddressBook(@RequestBody UserAddressUpdateRequestForm requestForm) {
+        return userService.updateAddressBook(requestForm);
+    }
+
+    // 관리자의 회원 목록 조회
+    @GetMapping("/list")
+    public List<UserInfoResponseForm> getUserList(@RequestParam("userToken") String userToken) {
+
+        return userService.getUserList(userToken);
     }
 }

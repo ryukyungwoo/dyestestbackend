@@ -1,12 +1,13 @@
 package com.dyes.backend.domain.user.service;
 
-import com.dyes.backend.domain.user.controller.form.GoogleUserLoginRequestForm;
-import com.dyes.backend.domain.user.controller.form.KakaoUserLoginRequestForm;
-import com.dyes.backend.domain.user.controller.form.NaverUserLoginRequestForm;
-import com.dyes.backend.domain.user.controller.form.UserProfileModifyRequestForm;
+import com.dyes.backend.domain.user.controller.form.*;
 import com.dyes.backend.domain.user.entity.User;
-import com.dyes.backend.domain.user.service.response.UserProfileResponseForm;
+import com.dyes.backend.domain.user.service.response.form.UserAddressBookResponseForm;
+import com.dyes.backend.domain.user.service.response.form.UserInfoResponseForm;
+import com.dyes.backend.domain.user.service.response.form.UserProfileResponseForm;
 import org.springframework.web.servlet.view.RedirectView;
+
+import java.util.List;
 
 public interface UserService {
     Boolean checkNickNameDuplicate(String nickName);
@@ -19,4 +20,8 @@ public interface UserService {
     String userLogIn(User user, String platform);
     boolean userLogOut(String userToken);
     boolean userWithdrawal(String userToken);
+    Boolean updateAddress(UserAddressModifyRequestForm requestForm);
+    List<UserAddressBookResponseForm> getAddressBook(String userToken);
+    Boolean updateAddressBook(UserAddressUpdateRequestForm requestForm);
+    List<UserInfoResponseForm> getUserList(String userToken);
 }
